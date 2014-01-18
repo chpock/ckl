@@ -494,6 +494,9 @@ proc ::ckl::dateentry::trace_var { w type varname aidx op } {
     set varname "$varname\($aidx\)" 
   }
 
+
+  set savestate [$w.entry cget -state]
+  $w.entry configure -state normal
   if { $op eq "write" } {
     if { $type eq "integer" } {
       if { [string is integer -strict $val] } {
@@ -508,6 +511,7 @@ proc ::ckl::dateentry::trace_var { w type varname aidx op } {
       entry2date $w all
     }
   }
+  $w.entry configure -state $savestate
 
   tracectl update $w
 }
