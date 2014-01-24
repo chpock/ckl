@@ -1117,7 +1117,7 @@ proc ::ckl::dateentry::configure {w args} {
 }
 
 proc ::ckl::dateentry::cget {w args} {
-  return [configure $w [lindex $args 0]]
+  return [lindex [configure $w [lindex $args 0]] end]
 }
 
 proc ::ckl::dateentry::mc { w msg args } {
