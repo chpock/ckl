@@ -99,6 +99,10 @@ RU5ErkJggg==}]
         bg   #d6dcee
         font {Helvetica 9 bold}
       }
+      active {
+        bd   {-bd 1 -relief solid}
+        bg   #9AE891
+      }
     }
     inactive {
       default {
@@ -220,7 +224,14 @@ proc ::ckl::dateentry::format { w } {
   variable cfg
   set ic [$w.entry index insert]
   $w.entry delete 0 end
-  $w.entry insert end [clock format [dict get $cfg $w date] -format [dict get $cfg $w format]]
+  set val [clock format [dict get $cfg $w date] -format [dict get $cfg $w format]]
+  if { [dict get $cfg $w date] == -1 } {
+  	dict for {id cfrm} [dict get $cfg $w eformat] {
+  	  if { $id eq "last" } continue
+  	  set val [string replace $val [dict get $cfrm start] [expr { [dict get $cfrm end] - 1 }] [string repeat 0 [dict get $cfrm width]]]
+		}
+  }
+  $w.entry insert end $val
   $w.entry icursor $ic
 }
 
@@ -292,6 +303,7 @@ proc ::ckl::dateentry::entryKey { w char sym state {nobell 0} } {
       if { $sym eq "BackSpace" } {
         $e delete $ic
         $e insert $ic 0
+			  entry2date $w [dict get $cfrm idx]
       }
       $e icursor $ic
     }
@@ -312,6 +324,7 @@ proc ::ckl::dateentry::entryKey { w char sym state {nobell 0} } {
       $e delete $ic
       $e insert $ic 0
       $e icursor $ic
+		  entry2date $w [dict get $cfrm idx]
     }
     return -code break
   } elseif { $sym eq "Home" } {
@@ -416,7 +429,6 @@ proc ::ckl::dateentry::entry2date { w incorrectidx } {
         if { $day <= [string trimleft [clock format [clock scan "+1 month -1 day" \
   							        -base [clock scan "$month/01/$year"]] -format %d] 0] } {
 			    dict set cfg $w date [clock scan "$month/$day/$year"]
-			    tracectl update $w
 			    # remove all 'incorrect' labels
 			    dict for {id cfrm} [dict get $cfg $w eformat] {
 			      if { ![dict exists $cfrm incorrect] } continue
@@ -426,14 +438,22 @@ proc ::ckl::dateentry::entry2date { w incorrectidx } {
       }
     }
   }
+	tracectl update $w
 }
 
-proc ::ckl::dateentry::parse_date { sunday_first d } {
+proc ::ckl::dateentry::parse_date { sunday_first d clformat } {
   set anchor [set unit ""]
   if { [regexp {^(start|end)\s+(?:of\s+)?(year|month|week)\s+(.+)$} $d - anchor unit other] } {
     set d $other
   }
-  set d [clock scan $d]
+  if { $d eq "" } {
+    return -1
+  }
+  if { [catch { clock scan $d -format $clformat } _] } {
+	  set d [clock scan $d]
+	} {
+	  set d $_
+	}
   switch -- "$anchor$unit" {
     startmonth {
       set d [clock scan [clock format $d -format {01/%m/%Y}] -format {%d/%m/%Y}]
@@ -505,8 +525,17 @@ proc ::ckl::dateentry::trace_var { w type varname aidx op } {
       }
     } {
       set saveic [$w.entry index insert]
+      set xval [$w.entry get]
+	  	dict for {id cfrm} [dict get $cfg $w eformat] {
+	  	  if { $id eq "last" } continue
+	  	  set lval [string trimleft [string range $val [dict get $cfrm start] [expr { [dict get $cfrm end] - 1 }]] {0 }]
+	  	  while { [string length $lval] != [dict get $cfrm width] } {
+	  	    set lval "0$lval"
+	  	  }
+	  	  set xval [string replace $xval [dict get $cfrm start] [expr { [dict get $cfrm end] - 1 }] $lval]
+			}
       $w.entry delete 0 end
-      $w.entry insert end $val
+      $w.entry insert end $xval
       $w.entry icursor $saveic
       entry2date $w all
     }
@@ -723,7 +752,13 @@ proc ::ckl::dateentry::select_open { w } {
     grid $win.main.week_day$_ -column $_ -row 1 -sticky nsew
   }
 
-  lassign [clock format [dict get $cfg $w date] -format "%Y %m"] cur_year cur_month
+  if { [set xdate [dict get $cfg $w date]] == -1 } {
+    set xdate [clock seconds]
+  }
+
+  dict set cfg $w active [clock format $xdate -format "%d%m%Y"]
+  lassign [clock format $xdate -format "%Y %m"] cur_year cur_month
+  
   set cur_month [string trimleft $cur_month 0]
 
   set cur_widget $w
@@ -911,7 +946,9 @@ proc ::ckl::dateentry::update_view { w } {
       06 - 10 { lappend cmd [list $daytype sunday]   }
     }
     if { $daytype eq "days" } {
-      if { [dict get $cfg $w today] eq "$day$month$year" } {
+      if { [dict get $cfg $w active] eq "$day$month$year" } {
+        lappend cmd {days active}
+      } elseif { [dict get $cfg $w today] eq "$day$month$year" } {
         lappend cmd {days today}
       }
 	    bind $W <Any-Enter> [namespace code [list set_color $w %W {*}$cmd {days hover}]]
@@ -972,20 +1009,21 @@ proc ::ckl::dateentry::widget {w args} {
   pack [ttk::entry $w.entry -width 50] \
        [button $w.button -image $img_button \
          -command [namespace code [list select_open $w]] \
-         -relief flat -takefocus 0] -padx 1 -side left
+         -relief flat -takefocus 1] -padx 1 -side left
 
   dict set cfg $w [dict get $cfg defaults]
   foreach id {month year days inactive week_header qbutton} {
     dict set cfg $w $id [dict get $cfg $id]
   }
 
+  configure $w -format [dict get $cfg $w format]
   if { [llength $args] } {
     configure $w {*}$args
   }
 
   dict for {k v} [dict get $cfg $w qbuttons] {
     if { ![dict exists $v place] } continue
-    dict set cfg $w qbuttons $k dateinteger [parse_date [dict get $cfg $w sunday_first] [dict get $v date]]
+    dict set cfg $w qbuttons $k dateinteger [parse_date [dict get $cfg $w sunday_first] [dict get $v date] [dict get $cfg $w format]]
     dict set cfg $w qbuttons $k date [clock format [dict get $cfg $w qbuttons $k dateinteger] \
       -format [dict get $cfg $w qbuttons_format]]
     dict set cfg $w qbuttons_[dict get $v place] 1
@@ -1012,25 +1050,7 @@ proc ::ckl::dateentry::widget {w args} {
 	bind $w.entry <Double-Button>	 break
 	bind $w.entry <Triple-Button>	 break
 
-  set correct 0
-  set frmidx -1
-  foreach _ [regexp -all -inline -indices %. [dict get $cfg $w format]] {
-    set frm [string index [dict get $cfg $w format] [lindex $_ 1]]
-    if { $frm eq "%" } {
-      incr correct -1
-      continue
-    }
-    set width [string length [clock format 0 -format %$frm]]
-    set start [lindex $_ 0]
-    incr start $correct
-    set end [expr { $start + $width }]
-    dict set cfg $w eformat [incr frmidx] \
-      [list start $start end $end width $width frm $frm idx $frmidx]
-    incr correct [expr { $width - 2 }]
-  }
-  dict set cfg $w eformat $frmidx last 1
-  dict set cfg $w eformat last [dict get $cfg $w eformat $frmidx]
-  $w.entry configure -width [expr { [string length [dict get $cfg $w format]] - [lindex $_ 1] - 1 + [dict get $cfg $w eformat last end] }]
+  $w.entry configure -width [expr { [string length [dict get $cfg $w format]] - [dict get $cfg $w eformat last start] + [dict get $cfg $w eformat last end] }]
 
   interp hide {} $w
   interp alias {} $w {} ::ckl::dateentry::cmd $w
@@ -1095,8 +1115,8 @@ proc ::ckl::dateentry::configure {w args} {
             dict set cfg $w sunday_first $v
           }
           -date {
-            if { ![string is integer -strict $v] } {
-              set v [parse_date [dict get $cfg $w sunday_first] $v]
+            if { ![string is integer -strict $v] } {              
+              set v [parse_date [dict get $cfg $w sunday_first] $v [dict get $cfg $w format]]
             }
             dict set cfg $w date $v
             format $w
@@ -1104,6 +1124,27 @@ proc ::ckl::dateentry::configure {w args} {
           }
           -format {
             dict set cfg $w format $v
+            catch { dict unset cfg $w eformat }
+
+					  set correct 0
+					  set frmidx -1
+					  foreach _ [regexp -all -inline -indices %. [dict get $cfg $w format]] {
+					    set frm [string index [dict get $cfg $w format] [lindex $_ 1]]
+					    if { $frm eq "%" } {
+					      incr correct -1
+					      continue
+					    }
+					    set width [string length [clock format 0 -format %$frm]]
+					    set start [lindex $_ 0]
+					    incr start $correct
+					    set end [expr { $start + $width }]
+					    dict set cfg $w eformat [incr frmidx] \
+					      [list start $start end $end width $width frm $frm idx $frmidx]
+					    incr correct [expr { $width - 2 }]
+					  }
+					  dict set cfg $w eformat $frmidx last 1
+					  dict set cfg $w eformat last [dict get $cfg $w eformat $frmidx]
+
             format $w
             tracectl update $w
           }
@@ -1117,6 +1158,9 @@ proc ::ckl::dateentry::configure {w args} {
 }
 
 proc ::ckl::dateentry::cget {w args} {
+  if { [lindex $args 0] eq "-takefocus" } {
+    return 0
+  }
   return [lindex [configure $w [lindex $args 0]] end]
 }
 
