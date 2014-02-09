@@ -3,18 +3,19 @@ package provide procarg 1.0
 
 namespace eval procarg {
 	variable box
-	variable paramtypes {string boolean integer double switch list}
+	variable paramtypes {string boolean integer double switch list dict}
 	variable regtypes
 	array set regtypes [list]
 
 	namespace export *
 	namespace ensemble create
 	set box [dict create ::procarg::registerkey [list \
-			-default [list string "" "" ignore false] \
-			-nodefault [list switch false "" ignore false] \
-			-restrict [list string "" "" ignore false] \
-			-allowempty [list boolean ignore "" ignore false] \
-			__cache [list -default "" -restrict "" -allowempty ignore -nodefault false]]]
+			-default    [list string  ""     ""     ignore false false] \
+			-nodefault  [list switch  false  ""     ignore false false] \
+			-restrict   [list string  ""     ""     ignore false false] \
+			-allowempty [list boolean ignore ""     ignore false false] \
+			-stripdash  [list switch  false  ""     ignore false false] \
+			__cache [list -default "" -restrict "" -allowempty ignore -nodefault false -stripdash false]]]
 }
 
 proc procarg::regtype { type args } {
@@ -41,6 +42,14 @@ proc procarg::registerkey { func key type args } {
 		return -code error "${func}: unknown type $type while registering arguments.\nAllowed types: [string trim $paramtypes]"
 	}
 	set type [lindex $paramtypes $idx]
+	if { [string match {[0-9]} $key] } {
+	  if { $type eq "switch" } {
+	    return -code error "${func}: type $type not supported for internal proc arg <${key}>"
+	  }
+	  if { $opts(-stripdash) } {
+	    return -code error "${func}: -stripdash option not suported for internal proc arg <${key}>"
+	  }
+	}
 	if { $type eq "switch" } {
 		set opts(-default) false
 	}
@@ -78,13 +87,16 @@ proc procarg::registerkey { func key type args } {
 					}
 					set opts(-restrict) [list $l $h]
 			}
+			dict {
+			  return -code error "${func}: error in arg declaration \"$key\": -restrict option not supported for dict arg type."
+			}
 		}
 	}
 	# check default value (ignore proc arguments)
 	if { ![string match {[0-9]} $key] && [catch { checkvalue $key $opts(-default) $type $opts(-restrict) true } msg] } {
 		return -code error "${func}: error in declaration of default arguments.\n$msg"
 	}
-	dict set box $func $key [list $type $opts(-default) $opts(-restrict) $opts(-allowempty) $opts(-nodefault)]
+	dict set box $func $key [list $type $opts(-default) $opts(-restrict) $opts(-allowempty) $opts(-nodefault) $opts(-stripdash)]
 }
 
 proc procarg::register { func params } {
@@ -140,12 +152,20 @@ proc procarg::parse { } {
 		for { set idx 0 } { $idx < [llength $a] } { incr idx } {
 			set key [lindex $a $idx]
 			if { ![dict exists $box $func $key] } { return -code error "${func}: unknown option $key, must be one of: [dict keys [dict get $box $func] -*]" }
-			lassign [dict get $box $func $key] type default restrict allowempty
-			if { $type eq "switch" } { set val true } { set val [lindex $a [incr idx]] }
+			lassign [dict get $box $func $key] type default restrict allowempty stripdash
+			if { $type eq "switch" } { 
+				set val true 
+			} { 
+				set val [lindex $a [incr idx]] 
+			}
 			if { [catch {checkvalue $key $val $type $restrict $allowempty} msg] } {
 				return -code error "${func}: error while parse arguments\n$msg"			
 			}
-			set o($key) $val
+			if { $stripdash } {
+				set o([string range $key 1 end]) $val
+			} {
+				set o($key) $val
+			}
 		}
 	}
 
@@ -154,7 +174,7 @@ proc procarg::parse { } {
 			return -code error "${func}: not found defined proc argument #${idx}."			
 		}
 		set val [uplevel 1 [list set $key]]
-		lassign [dict get $box $func $idx] type default restrict allowempty
+		lassign [dict get $box $func $idx] type default restrict allowempty stripdash
 		if { [catch {checkvalue $key $val $type $restrict $allowempty} msg] } {
 			return -code error "${func}: error while parse arguments\n$msg"			
 		}
@@ -185,6 +205,11 @@ proc procarg::checkvalue { key val type restrict allowempty } {
 	  	if { [catch {llength $val} msg] } {
 		    return -code error "$key \"$val\" bad list - $msg"	  		
 	  	}
+	  }
+	  dict {
+	    if { [catch {dict size $val} msg] } {
+	      return -code error "$key \"$val\" bad dict - $msg"
+	    }
 	  }
 	}
 	# simple custom type check
@@ -247,4 +272,29 @@ proc procarg::checkvalue { key val type restrict allowempty } {
 procarg::register ::procarg::regtype {
 	{-expression string}
 	{-errormsg string}
+}
+
+if { [info commands ::procarg::proc] eq "" } {
+  rename proc ::procarg::proc
+}
+::procarg::proc proc { name arg body } {
+  set xarg [list]
+  if { [catch {llength $arg} _] || !$_ } {
+    set xarg $arg
+  } {
+    foreach a $arg {
+      if { [catch {llength $a} _] || $_ != 2 || [lindex $a 0] ne "args" } {
+        if { [string match {&*} $a] } {
+          set a [string range $a 1 end]
+          append xbody "upvar 1 \${$a} $a;"
+        }
+        lappend xarg $a
+      } {
+        uplevel 1 [list ::procarg::register $name [lindex $a 1]]
+        append xbody {::procarg::parse;}
+        lappend xarg "args"  
+      }
+    }
+  }
+  tailcall ::procarg::proc $name $xarg [append xbody $body]
 }
