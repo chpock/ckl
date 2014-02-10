@@ -48,6 +48,8 @@ proc procarg::registerkey { func key type args } {
 	  }
 	  if { $opts(-stripdash) } {
 	    return -code error "${func}: -stripdash option not suported for internal proc arg <${key}>"
+	  } elseif { $opts(-default) ne "" } {
+	    return -code error "${func}: -default option not suported for internal proc arg <${key}>"
 	  }
 	}
 	if { $type eq "switch" } {
@@ -107,7 +109,7 @@ proc procarg::register { func params } {
 		if { [set ns [uplevel 1 [list namespace current]]] eq "::" } {
 			set func ::$func
 		} {
-			set func ${ns}::$func
+			set func ${ns}::[namespace tail $func]
 		}
 	}
 	
@@ -140,7 +142,7 @@ proc procarg::parse { } {
 		if { [set ns [uplevel 1 [list namespace current]]] eq "::" } {
 			set func ::$func
 		} {
-			set func ${ns}::$func
+			set func ${ns}::[namespace tail $func]
 		}
 	}
 
@@ -152,7 +154,7 @@ proc procarg::parse { } {
 		for { set idx 0 } { $idx < [llength $a] } { incr idx } {
 			set key [lindex $a $idx]
 			if { ![dict exists $box $func $key] } { return -code error "${func}: unknown option $key, must be one of: [dict keys [dict get $box $func] -*]" }
-			lassign [dict get $box $func $key] type default restrict allowempty stripdash
+			lassign [dict get $box $func $key] type default restrict allowempty nodefault stripdash
 			if { $type eq "switch" } { 
 				set val true 
 			} { 
@@ -174,7 +176,7 @@ proc procarg::parse { } {
 			return -code error "${func}: not found defined proc argument #${idx}."			
 		}
 		set val [uplevel 1 [list set $key]]
-		lassign [dict get $box $func $idx] type default restrict allowempty stripdash
+		lassign [dict get $box $func $idx] type default restrict allowempty nodefault stripdash
 		if { [catch {checkvalue $key $val $type $restrict $allowempty} msg] } {
 			return -code error "${func}: error while parse arguments\n$msg"			
 		}
