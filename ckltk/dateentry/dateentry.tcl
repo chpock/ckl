@@ -290,8 +290,9 @@ proc ::ckl::dateentry::entryKey { w char sym state {nobell 0} } {
   dict for {- cfrm} [dict get $cfg $w eformat] {
     if { $ic >= [dict get $cfrm start] && $ic <= [dict get $cfrm end] } break
   }
-
-  if { $sym in {Left BackSpace} } {
+  if { $sym eq "Return" } {
+    return -code continue
+  } elseif { $sym in {Left BackSpace} } {
     if { $ic == [dict get $cfrm start] } {
       if { [dict get $cfrm idx] } {
         $e icursor [dict get $cfg $w eformat [expr { [dict get $cfrm idx] - 1 }] end]
@@ -333,17 +334,17 @@ proc ::ckl::dateentry::entryKey { w char sym state {nobell 0} } {
   } elseif { $sym eq "End" } {
     $e icursor [dict get $cfg $w eformat last end]
     return -code break
-  } elseif { $sym eq "Tab" && ($state == 1 || $state == 4) } {
-    if { [dict get $cfrm idx] } {
-      $e icursor [dict get $cfg $w eformat [expr { [dict get $cfrm idx] - 1 }] start]
-      return -code break
-    } 
+  } elseif { $sym eq "Tab" && ($state % 2 == 1) } {
+#    if { [dict get $cfrm idx] } {
+#      $e icursor [dict get $cfg $w eformat [expr { [dict get $cfrm idx] - 1 }] start]
+#      return -code break
+#    } 
     return -code continue
-  } elseif { $sym eq "Tab" && $state == 0 } {
-    if { ![dict exists $cfrm last] } {
-      $e icursor [dict get $cfg $w eformat [expr { [dict get $cfrm idx] + 1 }] start]
-      return -code break
-    } 
+  } elseif { $sym eq "Tab" && ($state % 2 == 0) } {
+#    if { ![dict exists $cfrm last] } {
+#      $e icursor [dict get $cfg $w eformat [expr { [dict get $cfrm idx] + 1 }] start]
+#      return -code break
+#    } 
     return -code continue
   }
 
@@ -710,15 +711,15 @@ proc ::ckl::dateentry::select_open { w } {
   pack [frame $win.main -borderwidth 1 -relief solid -takefocus 0]
   grid [frame $win.main.header] -column 0 -row 0 -columnspan 7 -sticky nsew
   pack [button $win.main.header.m_prev -image $img_prev \
-         -command [namespace code [list btn_cmd $w mon prev]] -relief flat -takefocus false] \
+         -command [namespace code [list btn_cmd $w mon prev]] -relief flat -takefocus 0] \
        [label $win.main.header.mon -text ""] \
        [button $win.main.header.m_next -image $img_next \
-         -command [namespace code [list btn_cmd $w mon next]] -relief flat -takefocus false] \
+         -command [namespace code [list btn_cmd $w mon next]] -relief flat -takefocus 0] \
        [button $win.main.header.y_prev -image $img_prev \
-         -command [namespace code [list btn_cmd $w year prev]] -relief flat -takefocus false] \
+         -command [namespace code [list btn_cmd $w year prev]] -relief flat -takefocus 0] \
        [label $win.main.header.year -text ""] \
        [button $win.main.header.y_next -image $img_next \
-         -command [namespace code [list btn_cmd $w year next]] -relief flat -takefocus false] \
+         -command [namespace code [list btn_cmd $w year next]] -relief flat -takefocus 0] \
            -side left -fill both -expand 1
 
   set_color $w $win.main.header.m_prev {month}
@@ -1009,7 +1010,7 @@ proc ::ckl::dateentry::widget {w args} {
   pack [ttk::entry $w.entry -width 50] \
        [button $w.button -image $img_button \
          -command [namespace code [list select_open $w]] \
-         -relief flat -takefocus 1] -padx 1 -side left
+         -relief flat -takefocus 0] -padx 1 -side left
 
   dict set cfg $w [dict get $cfg defaults]
   foreach id {month year days inactive week_header qbutton} {
