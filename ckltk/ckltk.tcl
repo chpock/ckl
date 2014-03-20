@@ -31,3 +31,6 @@ proc centerwin d {
 }
 
 
+event add <<Paste>> <Control-Key-igrave> <Control-Key-Igrave> <Control-Lock-Key-igrave> <Control-Lock-Key-Igrave>
+event add <<Copy>> <Control-Key-itilde> <Control-Key-Itilde> <Control-Lock-Key-itilde> <Control-Lock-Key-Itilde>
+event add <<Cut>> <Control-Key-division> <Control-Key-multiply> <Control-Lock-Key-division> <Control-Lock-Key-multiply>
