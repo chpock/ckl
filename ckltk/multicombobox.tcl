@@ -68,7 +68,7 @@ switch -- [tk windowingsystem] {
 }
 
 proc ::ttk::multicombobox::cmd { self cmd args } {
-  puts "$self -> $cmd -> $args"
+#  puts "$self -> $cmd -> $args"
   switch -- $cmd {
     current {
       tailcall cmd_current $self {*}$args
@@ -90,14 +90,24 @@ proc ::ttk::multicombobox::cmd_current { self args } {
   if { [llength $args] > 1 } {
 	  error "wrong # args: should be \"$self current ?list?\""
   } elseif { [llength $args] } {
+    eval [$self cget -postcommand]
     set Current($self) [lindex $args 0]
     set current [list]
     set itemidx -1
     foreach item [$self cget -values] {
-      if { [lsearch $Current($self) [incr itemidx]] != -1 } { lappend current $item }
+      if { [lsearch $Current($self) [incr itemidx]] != -1 } { 
+      	lappend current $item 
+        set mark 1
+      } {
+        set mark 0
+      }
+      if { [winfo exists $self.popdown] } {
+        $self.popdown.f.l item [lindex [$self.popdown.f.l tag has idx$itemidx] 0] -image ::ttk::multicombobox::img$mark
+  	  }
     }
     interp invokehidden {} $self set [join $current {, }]
     tracectl $self update
+
   }
   return $Current($self)
 }
@@ -149,7 +159,15 @@ proc ::ttk::multicombobox::tracectl { self type } {
   }
   if { [set var [lindex [dict get $Config($self) -listvariable] end]] ne "" } {
     if { $type eq "add" } {
-      set $var [$self current]
+      set result [list]
+      set current [$self current]
+      set itemidx -1
+      foreach item [$self cget -values] {
+        if { [lsearch $current [incr itemidx]] != -1 } { 
+          lappend result $item
+        }
+      }
+      set $var $result
     }
     trace $type variable $var {write unset} [namespace code [list trace_var $self]]
   }
@@ -164,7 +182,13 @@ proc ::ttk::multicombobox::trace_var { self varname aidx op } {
     set varname "$varname\($aidx\)" 
   }
   if { $op eq "write" } {
-    $self current $val  
+    set current [list]
+    set itemidx -1
+    foreach item [$self cget -values] {
+      incr itemidx
+      if { [lsearch -exact $val $item] != -1 } { lappend current $itemidx }
+    }
+    $self current $current
   } {
     tracectl $self update
   }
@@ -224,7 +248,8 @@ proc ttk::multicombobox::ConfigureListbox {cb} {
 	  foreach val $values {
 	    $popdown.l insert {} end \
 	      -image ::ttk::multicombobox::img[expr { [lsearch $current [incr itemidx]] != -1 }] \
-	      -values [list $val]
+	      -values [list $val] \
+	      -tag idx$itemidx
 	  }
 	  set childs [$popdown.l children {}]
 	  if { [llength $current] } {
@@ -313,11 +338,11 @@ proc ttk::multicombobox::LBSelect { lb {one 0} } {
   }
   # TODO
   # можно оптимизировать, не изменяя картинки у всех, а только у тех, что действительно нужно менять
-  set itemidx -1
-  foreach item [$lb children {}] {
-    $lb item $item -image ::ttk::multicombobox::img[expr { [lsearch $current [incr itemidx]] != -1 }]
-  }
-  event generate $cb <<ComboboxSelected>> -when mark
+#  set itemidx -1
+#  foreach item [$lb children {}] {
+#    $lb item $item -image ::ttk::multicombobox::img[expr { [lsearch $current [incr itemidx]] != -1 }]
+#  }
+  event generate $cb <<ComboboxSelected>> -when mark -data $selection
 }
 
 image create photo ::ttk::multicombobox::img0 -data {

@@ -34,3 +34,15 @@ proc centerwin d {
 event add <<Paste>> <Control-Key-igrave> <Control-Key-Igrave> <Control-Lock-Key-igrave> <Control-Lock-Key-Igrave>
 event add <<Copy>> <Control-Key-ntilde> <Control-Key-Ntilde> <Control-Lock-Key-ntilde> <Control-Lock-Key-Ntilde>
 event add <<Cut>> <Control-Key-division> <Control-Key-multiply> <Control-Lock-Key-division> <Control-Lock-Key-multiply>
+
+proc ::ttk::xlabelframe { w args } {
+  if { ([llength $args] % 2) == 1 || ![dict exists $args -image] } {
+    tailcall ::ttk::labelframe $w {*}$args
+  }
+  foreach opt {-image -text -compound} {
+    if { ![dict exists $args $opt] } continue
+    lappend wargs $opt [dict get $args $opt]
+    dict unset args $opt
+  }
+  tailcall ::ttk::labelframe $w -labelwidget [ttk::label [% [join [lrange [split $w .] 0 end-1] .]] {*}$wargs] {*}$args
+}
