@@ -37,6 +37,23 @@ proc ::ttk::multicombobox { w args } {
 
 ttk::copyBindings TCombobox TMultiCombobox
 
+foreach x {MultiComboboxListbox MultiComboboxListbox.Item MultiComboboxListbox.Cell MultiComboboxListbox.Heading MultiComboboxListbox.Row} o {Treeview Item Cell Heading Row} {
+	ttk::style layout $x [ttk::style layout $o]
+	ttk::style configure $x {*}[ttk::style configure $o]
+	ttk::style map $x {*}[ttk::style map $o]
+}
+
+ttk::style layout MultiComboboxListbox.Item {
+	Treeitem.padding -sticky nswe -children {
+		Treeitem.image -side left -sticky {}
+		Treeitem.focus -side left -sticky {} -children {
+			Treeitem.text -side left -sticky {}
+		}
+	}
+}
+
+ttk::copyBindings Treeview MultiComboboxListbox
+
 bind TMultiCombobox <KeyPress-Down>   { ttk::multicombobox::Post %W }
 bind TMultiCombobox <ButtonPress-1> 		{ ttk::multicombobox::Press "" %W %x %y }
 bind TMultiCombobox <Shift-ButtonPress-1>	{ ttk::multicombobox::Press "s" %W %x %y }
@@ -215,12 +232,12 @@ proc ttk::multicombobox::PopdownWindow {cb} {
 
 		$scrollbar $popdown.sb \
 		    -orient vertical -command [list $popdown.l yview]
-		::ttk::treeview $popdown.l -columns {1} \
+		::ttk::treeview $popdown.l -columns {1} -style MultiComboboxListbox -class MultiComboboxListbox \
 		  -yscrollcommand [list $popdown.sb set] \
 		  -show {tree} \
 		  -selectmode browse
 
-		$popdown.l column \#0 -width 38 -stretch 0
+		$popdown.l column \#0 -width 18 -stretch 0
 		$popdown.l column 1 -width 10 -stretch 1
 
    	bindtags $popdown.l \
