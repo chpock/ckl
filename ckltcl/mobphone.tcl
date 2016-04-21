@@ -5,6 +5,7 @@ package require procarg
 
 namespace eval ::ckl {
  	namespace export parse_phones
+ 	namespace export parse_imeis
 
   variable extract_mobile_phones_re {(?x)
 		(?:\+?
@@ -53,6 +54,66 @@ namespace eval ::ckl {
 		)
 		(?!\d)}
 
+	variable extract_mobile_imeis_re {(?x)
+		(?:
+		  \m
+		)
+		(
+		  \d{15}
+		)
+		(?!\d)}
+
+	proc parse_imeis { text {args {
+	  {-noextract switch}
+	  {-indices   switch}
+	  {-imeis     switch}
+	  {-nocrc     switch}
+	}} } {
+	  variable extract_mobile_imeis_re
+
+	  set imeilist  [list]
+	  set cleantext ""
+	  set offset    0
+	  if { $opts(-imeis) } {
+	    set opts(-noextract) 1
+	  }
+
+	  while { [regexp -indices $extract_mobile_imeis_re $text matchall matchimei] } {
+	    set imei ""
+	    foreach char [split [string range $text {*}$matchimei] {}] {
+	      if { [string match {[0-9]} $char] } {
+	        append imei $char
+	      }
+	    }
+	    if { $opts(-indices) } {
+	      lappend imeilist [list [expr { [lindex $matchall 0] + $offset }] [expr { [lindex $matchall 1] + $offset }]]
+	      incr offset [lindex $matchall 1]
+	      incr offset
+	      set text [string range $text [lindex $matchall 1]+1 end]
+	    } {
+	      if { $opts(-nocrc) } {
+	        set imei [string replace $imei end end 0]
+	      }
+	      lappend imeilist $imei
+	      if { $opts(-noextract) } {
+	        append cleantext [string range $text 0 [lindex $matchall 1]]
+	        set text [string range $text [lindex $matchall 1]+1 end]
+	      } {
+	        append cleantext [expr { [string length $cleantext]?{ }:{} }][string trimright [string range $text 0 [lindex $matchall 0]-1]]
+	        set text [string trimleft [string range $text [lindex $matchall 1]+1 end]]
+	      }
+	    }
+	  }
+
+	  if { $opts(-imeis) } {
+	    return [lsort -unique $imeilist]
+	  } elseif { $opts(-indices) } {
+	    return $imeilist
+	  } {
+	    return [list $cleantext$text [lsort -unique $imeilist]]
+	  }
+
+	}
 
 	proc parse_phones { text {args {
 	  {-noextract switch}
@@ -105,8 +166,10 @@ namespace eval ::ckl {
 	  } {
 		  return [list $cleantext$text [lsort -unique $phonelist]]
 		}
+
 	}
 
 }
 
 namespace import ::ckl::parse_phones
+namespace import ::ckl::parse_imeis
