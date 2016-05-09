@@ -4,6 +4,7 @@ package require checkonline
 
 namespace eval  ::proxylist {
   namespace import ::checkonline::checkonline
+  namespace export getproxy
 
   variable Requests
   variable RequestCallback
@@ -85,7 +86,7 @@ namespace eval  ::proxylist {
       set tag [dict get $Requests($req) tag]
       log "found req $req with tag $tag"
       #if current proxy for tag exists - then check for max requests
-      if { [info exists Tags([list $tag current])] && [lindex $Tags([list $tag current]) 1] >= $Tags([list $tag MaxRequests]) } {
+      if { [info exists Tags([list $tag current])] && $Tags([list $tag MaxRequests]) > 0 && [lindex $Tags([list $tag current]) 1] >= $Tags([list $tag MaxRequests]) } {
         lappend Tags([list $tag used]) [list [lindex $Tags([list $tag current]) 0 0] [lindex $Tags([list $tag current]) 2]]
         log "tag reach max requests [lindex $Tags([list $tag current]) 1] for current proxy [lindex $Tags([list $tag current]) 0]"
         unset Tags([list $tag current])
@@ -93,18 +94,20 @@ namespace eval  ::proxylist {
       if { ![info exists Tags([list $tag current])] } {
         log "no current proxy for tag $tag"
 	      #cleanup used proxylist for tag
-	      set newlist [list]
-	      foreach proxy $Tags([list $tag used]) {
-	        lassign $proxy host timestamp
-	        if { ($timestamp + $Tags([list $tag Timeout])) < [clock seconds] } {
-	          lappend newlist [list $host $timestamp]
-	        } {
-	          log "remove used proxy $host as timeout"
-	        }
-	      }
-	      set Tags([list $tag used]) $newlist
-	      unset newlist
-	      unset -nocomplain proxy host timestamp
+	      if { [info exists Tags([list $tag used])] } {
+		      set newlist [list]
+		      foreach proxy $Tags([list $tag used]) {
+		        lassign $proxy host timestamp
+		        if { ($timestamp + $Tags([list $tag Timeout])) >= [clock seconds] } {
+		          lappend newlist [list $host $timestamp]
+		        } {
+		          log "remove used proxy $host as timeout"
+		        }
+		      }
+		      set Tags([list $tag used]) $newlist
+		      unset newlist
+		      unset -nocomplain proxy host timestamp
+		    }
         #cleanup ProxylistOK
         if { ![info exists ProxylistOKcleanup] } {
           log "test ProxylistOK for checktimeout..."
@@ -124,14 +127,14 @@ namespace eval  ::proxylist {
 	      }
 	      # try to find proxy for tag
 	      foreach proxy $ProxylistOK {
-	        if { [lsearch -exact -index 0 $Tags([list $tag used]) [lindex $proxy 0]] != -1 } continue
+	        if { [info exists Tags([list $tag used])] && [lsearch -exact -index 0 $Tags([list $tag used]) [lindex $proxy 0]] != -1 } continue
           set Tags([list $tag current]) [list $proxy 0 [clock seconds]]
           log "found new proxy, suitable for tag $proxy"
           break
 	      }
 	      unset -nocomplain proxy
 	    }
-	    if { [info exists $Tags([list $tag current])] } {
+	    if { [info exists Tags([list $tag current])] } {
 	      log "start callback for request"
 	      set Tags([list $tag current]) [list [lindex $Tags([list $tag current]) 0] [expr { [lindex $Tags([list $tag current]) 1] + 1 }] [clock seconds]]
 	      after 0 [linsert [dict get $Requests($req) callback] end ok {*}[lindex $Tags([list $tag current]) 0]]
@@ -204,7 +207,7 @@ namespace eval  ::proxylist {
       log "check proxy result $proxy : BAN for status."
       lappend ProxylistBAN $proxy
     }
-  	::http::cleanup $token
+  	catch { ::http::cleanup $token }
   	after 0 [namespace current]::check
   }
 
