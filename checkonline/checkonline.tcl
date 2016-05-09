@@ -7,8 +7,8 @@ namespace eval ::checkonline {
   variable Callbacks
   variable LastcheckTimestamp
   variable LastcheckValue
-  variable CheckTimeoutGood [expr { 60 * 10 }]
-  variable CheckTimeoutBad  [expr { 60 * 5 }]
+  variable CheckTimeoutOK   [expr { 60 * 10 }]
+  variable CheckTimeoutBAD  [expr { 60 * 5 }]
   variable CheckTimeout     60
   variable CheckTimer
   variable Debug 1
@@ -25,15 +25,15 @@ namespace eval ::checkonline {
     variable Callbacks
     variable LastcheckTimestamp
     variable LastcheckValue
-    variable CheckTimeoutGood
-    variable CheckTimeoutBad
+    variable CheckTimeoutOK
+    variable CheckTimeoutBAD
 
     if { [info exists LastcheckValue] } {
-      if { $LastcheckValue && ($CheckTimeoutGood + $LastcheckTimestamp) < [clock seconds] } {
+      if { $LastcheckValue && ($CheckTimeoutOK + $LastcheckTimestamp) >= [clock seconds] } {
         log "auto return ok"
         return 1
       }
-      if { !$LastcheckValue && ($CheckTimeoutBad + $LastcheckTimestamp) < [clock seconds] } {
+      if { !$LastcheckValue && ($CheckTimeoutBAD + $LastcheckTimestamp) >= [clock seconds] } {
         if { [info exists opts(-ononline)] && (![info exists $Callbacks] || [lsearch -exact $Callbacks $opts(-ononline)] == -1) } {
           log "save callback $opts(-ononline)"
           lappend Callbacks $opts(-ononline)
