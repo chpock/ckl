@@ -4,14 +4,13 @@ package require http
 namespace eval ::checkonline {
   namespace export checkonline
   
-  variable Callbacks
+  variable Callbacks        [list]
   variable LastcheckTimestamp
-  variable LastcheckValue
-  variable CheckTimeoutOK   [expr { 60 * 10 }]
-  variable CheckTimeoutBAD  [expr { 60 * 5 }]
+  variable LastcheckValue   0
+  variable CheckTimeoutGood [expr { 60 * 10 }]
   variable CheckTimeout     60
-  variable CheckTimer
   variable Debug 1
+  variable Status ""
 
   proc log { msg } {
     variable Debug
@@ -19,89 +18,91 @@ namespace eval ::checkonline {
     puts "\[checkonline\] $msg"
   }
 
+  proc settimer { } {
+    variable CheckTimeout
+    variable Status
+    log "auto query next check"
+    set Status "timer"
+    after [expr { $CheckTimeout * 1000 }] [list [namespace current]::checkonline -timer]
+  }
+
   proc checkonline { {args {
-    {-ononline string}
+    {-callback string}
+    {-timer switch}
   }}} {
     variable Callbacks
     variable LastcheckTimestamp
     variable LastcheckValue
-    variable CheckTimeoutOK
-    variable CheckTimeoutBAD
+    variable CheckTimeoutGood
+    variable Status
 
-    if { [info exists LastcheckValue] } {
-      if { $LastcheckValue && ($CheckTimeoutOK + $LastcheckTimestamp) >= [clock seconds] } {
-        log "auto return ok"
-        return 1
-      }
-      if { !$LastcheckValue && ($CheckTimeoutBAD + $LastcheckTimestamp) >= [clock seconds] } {
-        if { [info exists opts(-ononline)] && (![info exists $Callbacks] || [lsearch -exact $Callbacks $opts(-ononline)] == -1) } {
-          log "save callback $opts(-ononline)"
-          lappend Callbacks $opts(-ononline)
-        }
-        if { ![info exists CheckTimer] && [info exists Callbacks] } {
-          log "auto query next check"
-          set CheckTimer [after [expr { $CheckTimeout * 1000 }] [namespace current]::checkonlinetimer]
-        }
-        log "auto return bad"
-        return 0
-      }
+    if { [info exists opts(-callback)] && $opts(-callback) ne "" && [lsearch -exact $Callbacks $opts(-callback)] == -1 } {
+      log "save callback $opts(-callback)"
+      lappend Callbacks $opts(-callback)
     }
 
+    if { $Status eq "query" || ($Status eq "timer" && !$opts(-timer)) } {
+      log "in $Status mode now, return false"
+      return 0
+    }
+
+    if { $Status eq "" && $LastcheckValue && ($CheckTimeoutGood + $LastcheckTimestamp) >= [clock seconds] } {
+      log "auto return ok"
+      foreach callback $Callbacks {
+        log "fire callback: $callback"
+        after 0 $callback
+      }
+      set Callbacks [list]
+      return 1
+    }
+
+    set Status "query"
     set save [::http::config]
     ::http::config -proxyhost ""
     ::http::config -proxyport ""
     try {
       log "make request"
-      set token [::http::geturl "http://www.iprivacytools.com/proxy-checker-anonymity-test/" -timeout 2000]
-      log "result: status - [::http::status $token]; code - [::http::ncode $token]"
-      if { [::http::status $token] eq "ok" && [::http::ncode $token] == 200 } {
-        if { [string first {Your privacy is important to us} [::http::data $token]] != -1 } {
-          log "result: data - ok"
-          set iamonline 1
-        } {
-          log "result: data - bad"
-        }
-      }
+      set token [::http::geturl "http://www.find-ip.net/proxy-checker" -timeout 2000 -command \
+        [list apply {args { after 0 $args }} [namespace current]::callback] \
+      ]
     } on error { r o } {
       log "request error: $r"
+      set LastcheckValue 0
+      set LastcheckTimestamp [clock seconds]
+  	  catch { ::http::cleanup $token }
+      settimer
     } finally {
-      log "cleanup"
+      log "cleanup request"
   	  ::http::config {*}$save
-  	  ::http::cleanup $token
-  	}
+    }
 
- 	  set LastcheckTimestamp [clock seconds]
-  	if { [info exists iamonline] } {
-  	  set LastcheckValue 1
-  	  if { [info exists Callbacks] } {
-	  	  foreach callback $Callbacks {
-	  	    log "activate callback: $callback"
-	  	    after 0 $callback  
-	  	  }
-	  	  unset Callbacks
-	  	}
-  	  log "return OK"
-  	  return 1
-  	} {
-  	  set LastcheckValue 0
-  	  if { [info exists opts(-ononline)] && (![info exists $Callbacks] || [lsearch -exact $Callbacks $opts(-ononline)] == -1) } {
-  	    log "save callback $opts(-ononline)"
-  	    lappend Callbacks $opts(-ononline)
-  	  }
-  	  if { ![info exists CheckTimer] && [info exists Callbacks] } {
-  	    log "query next check"
-  	    set CheckTimer [after [expr { $CheckTimeout * 1000 }] [namespace current]::checkonlinetimer]
-  	  }
-  	  log "return BAD"
-  	  return 0
-  	}
+    log "enter in $Status mode, return false"
+
+    return 0
   }
 
-  proc checkonlinetimer { } {
-    variable CheckTimer
-    unset CheckTimer
-    log "check timer"
-    checkonline
+  proc callback { token } {
+    variable LastcheckValue
+    variable LastcheckTimestamp
+    variable Status
+    log "callback: status - [::http::status $token]; code - [::http::ncode $token]"
+    if { [::http::status $token] eq "ok" && [::http::ncode $token] == 200 } {
+      if { [string first {About Didsoft} [::http::data $token]] != -1 } {
+        log "callback: data - ok"
+        set online 1
+      } {
+        log "callback: data - bad"
+      }
+    }
+    ::http::cleanup $token
+    set LastcheckValue [info exists online]
+    set LastcheckTimestamp [clock seconds]
+    if { $LastcheckValue } {
+     set Status ""
+     tailcall checkonline
+    } {
+      settimer
+    }
   }
 
 }
