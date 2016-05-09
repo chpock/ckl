@@ -1,7 +1,7 @@
 package require procarg
 package require http
 
-namaspace eval ::checkonline {
+namespace eval ::checkonline {
   namespace export checkonline
   
   variable Callbacks
@@ -73,10 +73,12 @@ namaspace eval ::checkonline {
  	  set LastcheckTimestamp [clock seconds]
   	if { [info exists iamonline] } {
   	  set LastcheckValue 1
-  	  foreach callback $Callbacks {
-  	    log "activate callback: $callback"
-  	    after 0 $callback  
-  	  }
+  	  if { [info exists Callbacks] } {
+	  	  foreach callback $Callbacks {
+	  	    log "activate callback: $callback"
+	  	    after 0 $callback  
+	  	  }
+	  	}
   	  unset Callbacks
   	  log "return OK"
   	  return 1
