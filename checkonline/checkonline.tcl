@@ -78,8 +78,8 @@ namespace eval ::checkonline {
 	  	    log "activate callback: $callback"
 	  	    after 0 $callback  
 	  	  }
+	  	  unset Callbacks
 	  	}
-  	  unset Callbacks
   	  log "return OK"
   	  return 1
   	} {
