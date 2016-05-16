@@ -1,6 +1,6 @@
 package require procarg
 package require http
-package require checkonline
+package require ckl::checkonline
 
 namespace eval  ::proxylist {
   namespace import ::checkonline::checkonline
@@ -340,4 +340,4 @@ namespace eval  ::proxylist {
 
 }
 
-package provide proxylist 1.0
+package provide ckl::proxylist 1.0

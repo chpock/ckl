@@ -107,4 +107,4 @@ namespace eval ::checkonline {
 
 }
 
-package provide checkonline 1.0
+package provide ckl::checkonline 1.0
