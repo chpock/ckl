@@ -4,104 +4,115 @@ package require http
 namespace eval ::checkonline {
   namespace export checkonline
   
-  variable Callbacks        [list]
+  variable Callbacks
   variable LastcheckTimestamp
   variable LastcheckValue   0
   variable CheckTimeoutGood [expr { 60 * 10 }]
   variable CheckTimeout     60
   variable Debug 1
   variable Status ""
+  variable uid
 
-  proc log { msg } {
+  proc log { id desc hdesc1 {hdesc2 {}} } {
     variable Debug
     if { !$Debug } return
-    puts "\[checkonline\] $msg"
+    if { $hdesc2 eq "" } {
+      set hdesc2 $hdesc1
+    }
+    puts "\[checkonline\] ${id}-${desc} >> $hdesc2"
   }
 
   proc settimer { } {
     variable CheckTimeout
     variable Status
-    log "auto query next check"
+    log "INFO" "TIMER" "set timer"
     set Status "timer"
-    after [expr { $CheckTimeout * 1000 }] [list [namespace current]::checkonline -timer]
+    after [expr { $CheckTimeout * 1000 }] [list [namespace current]::query]
   }
 
   proc checkonline { {args {
-    {-callback string}
-    {-timer switch}
+    {-callback string -nodefault -allowempty false}
   }}} {
     variable Callbacks
     variable LastcheckTimestamp
     variable LastcheckValue
     variable CheckTimeoutGood
     variable Status
+    variable uid
 
-    if { [info exists opts(-callback)] && $opts(-callback) ne "" && [lsearch -exact $Callbacks $opts(-callback)] == -1 } {
-      log "save callback $opts(-callback)"
-      lappend Callbacks $opts(-callback)
-    }
+    set Callbacks([incr uid]) $opts(-callback)
 
-    if { $Status eq "query" || ($Status eq "timer" && !$opts(-timer)) } {
-      log "in $Status mode now, return false"
-      return 0
-    }
+    log "INFO" "SAVECALLBACK" "save callback" "save callback: $opts(-callback)"
 
     if { $Status eq "" && $LastcheckValue && ($CheckTimeoutGood + $LastcheckTimestamp) >= [clock seconds] } {
-      log "auto return ok"
-      foreach callback $Callbacks {
-        log "fire callback: $callback"
-        after 0 $callback
-      }
-      set Callbacks [list]
-      return 1
+      log "INFO" "AUTOOK" "return auto-ok value"
+      runcallbacks
+      return $uid
     }
 
+    if { $Status in {"query" "timer"} } {
+      log "INFO" "WAIT" "in $Status mode now"
+    } {
+	    query
+    }
+
+    return $uid
+  }
+
+  proc runcallbacks { } {
+    variable Callbacks
+    foreach id [array names Callbacks] {
+      log "INFO" "CALLBACK" "fire callback" "fire callback: $Callbacks($id)"
+      after 0 $Callbacks($id)
+      unset Callbacks($id)
+    }
+  }
+
+  proc query { } {
+    variable Status
     set Status "query"
     set save [::http::config]
     ::http::config -proxyhost ""
     ::http::config -proxyport ""
     try {
-      log "make request"
+      log "INFO" "REQUEST" "making request"
       set token [::http::geturl "http://www.find-ip.net/proxy-checker" -timeout 2000 -command \
         [list apply {args { after 0 $args }} [namespace current]::callback] \
       ]
     } on error { r o } {
-      log "request error: $r"
+      log "ERROR" "REQUEST" "internal error" "internal error: $r"
       set LastcheckValue 0
       set LastcheckTimestamp [clock seconds]
   	  catch { ::http::cleanup $token }
       settimer
     } finally {
-      log "cleanup request"
   	  ::http::config {*}$save
     }
-
-    log "enter in $Status mode, return false"
-
-    return 0
   }
 
   proc callback { token } {
     variable LastcheckValue
     variable LastcheckTimestamp
     variable Status
-    log "callback: status - [::http::status $token]; code - [::http::ncode $token]"
+    log "INFO" "REQUESTCALLBACK" "request callback" "request callback: status - [::http::status $token]; code - [::http::ncode $token]"
     if { [::http::status $token] eq "ok" && [::http::ncode $token] == 200 } {
       if { [string first {About Didsoft} [::http::data $token]] != -1 } {
-        log "callback: data - ok"
+        log "INFO" "REQUESTOK" "request ok"
         set online 1
       } {
-        log "callback: data - bad"
+        log "ERROR" "REQUEST" "request error" "bad data"
       }
+    } {
+      log "ERROR" "REQUEST" "request error" "request error code/status"
     }
     ::http::cleanup $token
     set LastcheckValue [info exists online]
     set LastcheckTimestamp [clock seconds]
     if { $LastcheckValue } {
-     set Status ""
-     tailcall checkonline
+      set Status ""
+      tailcall runcallbacks
     } {
-      settimer
+      tailcall settimer
     }
   }
 
