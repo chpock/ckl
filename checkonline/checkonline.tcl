@@ -9,23 +9,51 @@ namespace eval ::checkonline {
   variable LastcheckValue   0
   variable CheckTimeoutGood [expr { 60 * 10 }]
   variable CheckTimeout     60
-  variable Debug 1
+  variable Debug 0
   variable Status ""
   variable uid
 
-  proc log { id desc hdesc1 {hdesc2 {}} } {
+  variable Log {
+    INFO-RESET        "reset callback"
+    ERROR-RESET       "callback not found"
+    INFO-TIMER        "set timer"
+    INFO-SAVECALLBACK "save callback"
+    INFO-AUTOOK       "return auto-ok value"
+    INFO-WAIT         "in wait mode now"
+    INFO-CALLBACK     "fire callback"
+    INFO-REQUEST      "making request"
+    ERROR-REQUESTINT  "internal error"
+    INFO-REQUESTCALLBACK "request callback"
+    INFO-REQUESTOK    "request ok"
+    ERROR-REQUESTDATA "request error - bad data"
+    ERROR-REQUESTCODE "request error - bad code/status"
+  }
+
+  proc log { id {detail {}} } {
     variable Debug
+    variable Log
     if { !$Debug } return
-    if { $hdesc2 eq "" } {
-      set hdesc2 $hdesc1
+    set str [dict get $Log $id]
+    if { $detail ne "" } {
+      append str ", detail: $detail"
     }
-    puts "\[checkonline\] ${id}-${desc} >> $hdesc2"
+    puts "\[checkonline\] $str"
+  }
+
+  proc reset { uid } {
+    variable Callbacks
+    if { [array exists Callbacks] && [info exists Callbacks($uid)] } {
+      unset Callbacks($uid)
+      log "INFO-RESET" $uid
+    } {
+      log "ERROR-RESET" $uid
+    }
   }
 
   proc settimer { } {
     variable CheckTimeout
     variable Status
-    log "INFO" "TIMER" "set timer"
+    log "INFO-TIMER"
     set Status "timer"
     after [expr { $CheckTimeout * 1000 }] [list [namespace current]::query]
   }
@@ -42,16 +70,16 @@ namespace eval ::checkonline {
 
     set Callbacks([incr uid]) $opts(-callback)
 
-    log "INFO" "SAVECALLBACK" "save callback" "save callback: $opts(-callback)"
+    log "INFO-SAVECALLBACK" $uid
 
     if { $Status eq "" && $LastcheckValue && ($CheckTimeoutGood + $LastcheckTimestamp) >= [clock seconds] } {
-      log "INFO" "AUTOOK" "return auto-ok value"
+      log "INFO-AUTOOK"
       runcallbacks
       return $uid
     }
 
     if { $Status in {"query" "timer"} } {
-      log "INFO" "WAIT" "in $Status mode now"
+      log "INFO-WAIT" "status - $Status"
     } {
 	    query
     }
@@ -62,7 +90,7 @@ namespace eval ::checkonline {
   proc runcallbacks { } {
     variable Callbacks
     foreach id [array names Callbacks] {
-      log "INFO" "CALLBACK" "fire callback" "fire callback: $Callbacks($id)"
+      log "INFO-CALLBACK" $id
       after 0 $Callbacks($id)
       unset Callbacks($id)
     }
@@ -75,12 +103,12 @@ namespace eval ::checkonline {
     ::http::config -proxyhost ""
     ::http::config -proxyport ""
     try {
-      log "INFO" "REQUEST" "making request"
+      log "INFO-REQUEST"
       set token [::http::geturl "http://www.find-ip.net/proxy-checker" -timeout 2000 -command \
         [list apply {args { after 0 $args }} [namespace current]::callback] \
       ]
     } on error { r o } {
-      log "ERROR" "REQUEST" "internal error" "internal error: $r"
+      log "ERROR-REQUESTINT" $r
       set LastcheckValue 0
       set LastcheckTimestamp [clock seconds]
   	  catch { ::http::cleanup $token }
@@ -94,16 +122,16 @@ namespace eval ::checkonline {
     variable LastcheckValue
     variable LastcheckTimestamp
     variable Status
-    log "INFO" "REQUESTCALLBACK" "request callback" "request callback: status - [::http::status $token]; code - [::http::ncode $token]"
+    log "INFO-REQUESTCALLBACK" "status - [::http::status $token]; code - [::http::ncode $token]"
     if { [::http::status $token] eq "ok" && [::http::ncode $token] == 200 } {
       if { [string first {About Didsoft} [::http::data $token]] != -1 } {
-        log "INFO" "REQUESTOK" "request ok"
+        log "INFO-REQUESTOK"
         set online 1
       } {
-        log "ERROR" "REQUEST" "request error" "bad data"
+        log "ERROR-REQUESTDATA"
       }
     } {
-      log "ERROR" "REQUEST" "request error" "request error code/status"
+      log "ERROR-REQUESTCODE"
     }
     ::http::cleanup $token
     set LastcheckValue [info exists online]
