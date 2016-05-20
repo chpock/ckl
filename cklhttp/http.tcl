@@ -219,9 +219,14 @@ namespace eval ::ckl::http {
       }
       "checkonline" {
         ::checkonline::reset $token(token)
-	      set token(state) "ierror"
-  	    set token(error) "reset my request"
+	      set token(state) "reset"
+  	    set token(error) "reset by request"
     	  geturl_callback $tokenname
+      }
+      "getproxy" {
+        ::proxylist::reset $token(token)
+	      set token(state) "reset"
+  	    set token(error) "reset by request"
       }
       default {
         return -code error "can't reset from state '$token(state)'"
