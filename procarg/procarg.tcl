@@ -146,6 +146,26 @@ proc procarg::parse { } {
 		}
 	}
 
+	if { ![catch [list uplevel 1 [list self class]] class] } {
+	  set method [lindex [info level -1] 1]
+	  set func ${class}::$method
+	  if { ![dict exists $box $func] } {
+	    lassign [info class definition $class $method] targs tbody
+	    set xargs [list]
+	    foreach targ $targs {
+  	    if { [catch {llength $targ} _] || $_ != 2 || [lindex $targ 0] ne "args" } {
+  	      lappend xargs $targ
+    	  } {
+      	  uplevel 1 [list ::procarg::register ${class}::$method [lindex $targ 1]]
+  	      lappend xargs "args"
+    	  }
+	    }
+	    ::oo::define $class [list method $method $xargs $tbody]
+	    unset targs xargs tbody
+	  }
+	  unset method
+	}
+
 	if { ![dict exists $box $func] } { return -code error "arguments for $func not registered yet."	}
 
 	array set o [dict get $box $func __cache]
