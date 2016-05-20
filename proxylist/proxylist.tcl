@@ -32,6 +32,7 @@ namespace eval  ::proxylist {
   variable CheckThreadsMax 5
   variable ReqCounter 0
   variable Status     ""
+  variable StatusChecking 0
 
   variable Debug 0
 
@@ -45,7 +46,8 @@ namespace eval  ::proxylist {
 		INFO-REACHTIMEOUT "remove used proxy by timeout"
 		INFO-FOUNDNEW "found new proxy, suitable for tag"
 		INFO-CALLBACK "start callback for request"
-		INFO-STARTCHECK "no proxy for tag, try to check exists proxys"
+		INFO-STARTCHECK "try to check exists proxys"
+		INFO-STOPCHECK "stop check proxy"
 		INFO-STARTUPDATE "no proxy for tag, try to update proxy"
 		INFO-UPDATEMOD "start update proxymod"
 		ERROR-UPDATEMOD "error while update proxymod"
@@ -63,6 +65,8 @@ namespace eval  ::proxylist {
 		INFO-CHKCALLBACKANON "check proxy result: ANON"
 		ERROR-CHKCALLBACKANON "check proxy result: BAN - NOT anonymous"
 		ERROR-CHKCALLBACKOK "check proxy result: BAN by status"
+		INFO-RESETREQ "cancel request"
+		ERROR-RESETREQ "error, request not found"
   }
 
   array set Requests [list]
@@ -78,6 +82,16 @@ namespace eval  ::proxylist {
       append str ", detail: $detail"
     }
     puts "\[proxylist\] $str"
+  }
+
+  proc reset { req } {
+    variable Requests
+    if { [info exists Requests($req)] } {
+      unset Requests($req)
+      log "INFO-RESETREQ" $req
+    } {
+      log "ERROR-RESETREQ" $req
+    }
   }
 
   proc forcebanproxy { tag } {
@@ -128,7 +142,7 @@ namespace eval  ::proxylist {
     if { [info exists opts(-callback)] && $opts(-callback) ne "" } {
       dict set Requests($req) callback $opts(-callback)
       getproxy_
-      return
+      return $req
     }
     log "INFO-STARTWAIT"
     dict set Requests($req) callback [list apply [list {req args} {
@@ -213,14 +227,12 @@ namespace eval  ::proxylist {
 	      unset Requests($req)
 	    } {
         if { [llength $ProxylistRAW] || [llength $ProxylistCHK] } {
-	 		    log "INFO-STARTCHECK" [list $tag]
 	 		    if { ![info exists start_check] } {
 	 		      set NeedGoodProxy $NeedGoodProxyMAX
 	          check
 	          set start_check 1
 	        }
         } {
-          log "INFO-STARTUPDATE" [list $tag]
 	 		    if { ![info exists start_update] } {
 			      updateproxy
 			      set start_update 1
@@ -233,6 +245,7 @@ namespace eval  ::proxylist {
   proc updateproxy { } {
     variable Status
     if { $Status eq "update" } return
+    log "INFO-STARTUPDATE"
     foreach ns [namespace children [namespace current]] {
       if { [info commands ${ns}::updateproxy] ne "" } {
         if { [info exists ${ns}::Status] && [set ${ns}::Status] in {"update" "error"} } continue
@@ -257,13 +270,13 @@ namespace eval  ::proxylist {
     set save [::http::config]
     ::http::config -proxyhost ""
     ::http::config -proxyport ""
-    log "INFO-REQSTART" [list $url]
+    log "INFO-REQSTART" [list [namespace tail $ns] $url]
     try {
       set token [::http::geturl $url {*}$arg -timeout 5000 \
                   -headers [list {Accept-Language} {ru-RU} {Accept-Encoding}	{gzip, deflate}] \
   			  	      -command [list apply {args { after 0 $args }} [namespace current]::httpreq_callback $ns]]  			  	      
     } on error { r o } {
-      log "ERROR-REQSTART" [list "internal: $r"]
+      log "ERROR-REQSTART" [list [namespace tail $ns] "internal: $r"]
  	    catch { ::http::cleanup $token }
  	    tailcall httpreq_done $ns "error" ""
   	} finally {
@@ -273,7 +286,7 @@ namespace eval  ::proxylist {
   }
 
   proc httpreq_callback { ns token } {
-    log "INFO-REQCALLBACK" [list $ns [::http::status $token] [::http::ncode $token]]
+    log "INFO-REQCALLBACK" [list [namespace tail $ns] [::http::status $token] [::http::ncode $token]]
     if { [::http::status $token] eq "ok" && [::http::ncode $token] == 200 } {
       set data [::http::data $token]
       set status "ok"
@@ -291,11 +304,11 @@ namespace eval  ::proxylist {
   	variable ProxylistOK
   	variable Status
     if { $status eq "ok" } {
-      log "INFO-REQPARSESTART" [list $ns]
+      log "INFO-REQPARSESTART" [list [namespace tail $ns]]
       if { [catch {${ns}::callback $data} result] } {
-        log "ERROR-REQPARSESTART" [list $result]
+        log "ERROR-REQPARSESTART" [list [namespace tail $ns] $result]
       } {
-        log "INFO-REQPARSEGOT" [list [llength $result]]
+        log "INFO-REQPARSEGOT" [list [namespace tail $ns] [llength $result]]
         foreach proxy $result {
           if { [lsearch -exact $ProxylistRAW $proxy] != -1 } {
 #            log "proxy $proxy in RAW list"
@@ -336,7 +349,18 @@ namespace eval  ::proxylist {
     variable ProxylistCHK
     variable ProxylistBAN
     variable CheckThreadsMax
-    if { $NeedGoodProxy <= 0 } return
+    variable StatusChecking
+    if { $NeedGoodProxy <= 0 } {
+      if { ![llength $ProxylistCHK] } {
+		    log "INFO-STOPCHECK"
+        set StatusChecking 0
+      }
+      return
+    }
+    if { !$StatusChecking } {
+	    log "INFO-STARTCHECK"
+      set StatusChecking 1
+    }
     while { ([llength $ProxylistCHK] < $CheckThreadsMax) && [llength $ProxylistRAW] } {
       set proxy [lindex $ProxylistRAW 0]
       set ProxylistRAW [lreplace $ProxylistRAW 0 0]
@@ -358,6 +382,9 @@ namespace eval  ::proxylist {
 	      unset save
 	    }
     }
+    if { ![llength $ProxylistCHK] } {
+	  	after 0 [namespace current]::getproxy_
+    }
   }
 
   proc check_callback { proxy timestamp token } {
@@ -376,7 +403,6 @@ namespace eval  ::proxylist {
         lappend ProxylistOK [list $proxy [clock seconds] [expr { [clock milliseconds] - $timestamp }]]
         set ProxylistOK [lsort -integer -increasing -index 2 $ProxylistOK]
         incr NeedGoodProxy -1
-        after 0 [namespace current]::getproxy_
       } {
         log "ERROR-CHKCALLBACKANON" [list $proxy]
         lappend ProxylistBAN $proxy
@@ -385,7 +411,7 @@ namespace eval  ::proxylist {
       log "ERROR-CHKCALLBACKOK" [list $proxy]
       lappend ProxylistBAN $proxy
     }
-  	catch { ::http::cleanup $token }
+  	::http::cleanup $token
   	after 0 [namespace current]::check
   	after 0 [namespace current]::getproxy_
   }

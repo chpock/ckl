@@ -10,7 +10,7 @@ namespace eval ::proxylist::proxysearcher-sourceforge-net {
 
   proc callback { data } {
     set result [list]
- 	  foreach {- host port} [regexp -all -inline -nocase {<td>(\d+\.\d+\.\d+\.\d+):(\d+)</td><td>HighAnonymous</td>} $data] {
+ 	  foreach {- host port} [regexp -all -inline -nocase {<td>(\d+\.\d+\.\d+\.\d+):(\d+)</td><td>(?:HighAnonymous|Anonymous)</td>} $data] {
  	    lappend result [list $host $port]
  	  }
     return $result
