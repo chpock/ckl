@@ -183,6 +183,9 @@ proc procarg::parse { } {
 
 	array set o [dict get $box $func __cache]
 
+	set tempkeys [dict get $box $func]
+	dict unset tempkeys __cache
+
 	if { [info exists a] } {
 		for { set idx 0 } { $idx < [llength $a] } { incr idx } {
 			set key [lindex $a $idx]
@@ -196,12 +199,29 @@ proc procarg::parse { } {
 			if { [catch {checkvalue $key $val $type $restrict $allowempty} msg] } {
 				return -code error "${func}: error while parse arguments\n$msg"			
 			}
+			if { [dict exists $tempkeys $key] } {
+			  dict unset tempkeys $key
+			}
 			if { $stripdash } {
 				set o([string range $key 1 end]) $val
 			} {
 				set o($key) $val
 			}
 		}
+	}
+
+	# additional check for allowempty
+	dict for { key val } $tempkeys {
+		lassign $val type default restrict allowempty nodefault stripdash
+	  if { $allowempty eq "ignore" || $allowempty } continue
+	  if { $stripdash } {
+	    set key_temp [string range $key 1 end]
+	  } {
+	    set key_temp $key
+	  }
+	  if { ![info exists o($key)] || $o($key) eq "" } {
+			return -code error "${func}: error while parse arguments\n$key not allowed to be empty."
+	  }
 	}
 
 	foreach idx [dict keys [dict get $box $func] {[0-9]}] {
