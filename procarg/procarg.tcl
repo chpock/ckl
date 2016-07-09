@@ -146,11 +146,17 @@ proc procarg::parse { } {
 		}
 	}
 
-	if { ![catch [list uplevel 1 [list self class]] class] } {
-	  set method [lindex [info level -1] 1]
+	if { ![catch [list uplevel 1 [list self call]] class] } {
+	  set class [lindex [lindex $class 0] [lindex $class 1]]
+	  set method [lindex $class 1]
+	  set class [lindex $class 2]
 	  set func ${class}::$method
 	  if { ![dict exists $box $func] } {
-	    lassign [info class definition $class $method] targs tbody
+	    if { $method eq {<constructor>} } {
+		    lassign [info class constructor $class] targs tbody
+	    } {
+		    lassign [info class definition $class $method] targs tbody
+		  }
 	    set xargs [list]
 	    foreach targ $targs {
   	    if { [catch {llength $targ} _] || $_ != 2 || [lindex $targ 0] ne "args" } {
@@ -160,7 +166,11 @@ proc procarg::parse { } {
   	      lappend xargs "args"
     	  }
 	    }
-	    ::oo::define $class [list method $method $xargs $tbody]
+	    if { $method eq {<constructor>} } {
+		    ::oo::define $class [list constructor $xargs $tbody]
+	    } {
+		    ::oo::define $class [list method $method $xargs $tbody]
+		  }
 	    unset targs xargs tbody
 	  }
 	  unset method
