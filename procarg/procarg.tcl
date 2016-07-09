@@ -126,6 +126,9 @@ proc procarg::register { func params } {
 	dict for { key val } [dict get $box $func] { 
 		if { [string match {[0-9]} $key] || $key eq "__cache" } continue
 		if { [lindex $val 4] } continue
+		if { [lindex $val 5] } {
+		  set key [string range $key 1 end]
+		}
 		lappend cache $key [lindex $val 1]
 	}
 	dict set box $func __cache $cache
