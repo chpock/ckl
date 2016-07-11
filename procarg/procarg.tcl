@@ -77,15 +77,21 @@ proc procarg::registerkey { func key type args } {
 			}
 			list {
 				lassign $opts(-restrict) l h
-					if { $l eq "" || $l eq "-" } {
-						set l 0
-					} elseif { ![string is integer -strict $l] } {
-						return -code error "${func}: error in declaration restrict of \"$key\", \"$l\" lower list size is not integer."							
-					}
-					if { $h eq "" || $h eq "+" } {
-						set h "+"
-					} elseif { ![string is integer -strict $h] } {
-						return -code error "${func}: error in declaration restrict of \"$key\", \"$l\" upper list size is not integer."							
+				  if { $l in {in ni} } {
+				    if { [catch {llength $h} errmsg] } {
+							return -code error "${func}: error in declaration restrict of \"$key\", \"$h\" is not correct list."
+				    }
+				  } {
+						if { $l eq "" || $l eq "-" } {
+							set l 0
+						} elseif { ![string is integer -strict $l] } {
+							return -code error "${func}: error in declaration restrict of \"$key\", \"$l\" lower list size is not integer."							
+						}
+						if { $h eq "" || $h eq "+" } {
+							set h "+"
+						} elseif { ![string is integer -strict $h] } {
+							return -code error "${func}: error in declaration restrict of \"$key\", \"$l\" upper list size is not integer."							
+						}
 					}
 					set opts(-restrict) [list $l $h]
 			}
@@ -314,7 +320,19 @@ proc procarg::checkvalue { key val type restrict allowempty } {
 			}
 			list {
 				lassign $restrict l h
-				if { [llength $val] < $l || ($h ne "+" && [llength $val] > $h) } {
+				if { $l eq "in" } {
+				  foreach el $val {
+				    if { $el ni $h } {
+							return -code error "$key \"$el\" is not allowed list element"
+				    }
+				  }
+				} elseif { $l eq "ni" } {
+				  foreach el $val {
+				    if { $el in $h } {
+							return -code error "$key \"$el\" is not allowed list element"
+				    }
+				  }
+				} elseif { [llength $val] < $l || ($h ne "+" && [llength $val] > $h) } {
 					return -code error "$key \"$val\" is not covered by allowed range of list size: ${l}..${h}"
 				}
 			}
