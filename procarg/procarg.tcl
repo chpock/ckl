@@ -155,6 +155,10 @@ proc procarg::parse { } {
 		}
 	}
 
+	puts "func: $func"
+	puts "a: $a"
+	puts "[info level -1]"
+
 	if { ![catch [list uplevel 1 [list self call]] class] } {
 	  set class [lindex [lindex $class 0] [lindex $class 1]]
 	  set method [lindex $class 1]
@@ -220,6 +224,8 @@ proc procarg::parse { } {
 	dict for { key val } $tempkeys {
 		lassign $val type default restrict allowempty nodefault stripdash
 	  if { $allowempty eq "ignore" || $allowempty } continue
+	  # ignore -allowempty for arguments 0-9, they check below
+	  if { [string match {[0-9]} $key] } continue
 	  if { $stripdash } {
 	    set key_temp [string range $key 1 end]
 	  } {
