@@ -360,8 +360,7 @@ if { [info commands ::procarg::proc] eq "" } {
     foreach a $arg {
       if { [catch {llength $a} _] || $_ != 2 || [lindex $a 0] ne "args" } {
         if { [string match {&*} $a] } {
-          set a [string range $a 1 end]
-          append xbody "upvar 1 \${$a} $a;"
+          append xbody "upvar 1 \${$a} [string range $a 1 end];"
         }
         lappend xarg $a
       } {
