@@ -155,10 +155,6 @@ proc procarg::parse { } {
     }
   }
 
-  puts "func: $func"
-  puts "a: $a"
-  puts "[info level -1]"
-
   if { ![catch [list uplevel 1 [list self call]] class] } {
     set class [lindex [lindex $class 0] [lindex $class 1]]
     set method [lindex $class 1]
